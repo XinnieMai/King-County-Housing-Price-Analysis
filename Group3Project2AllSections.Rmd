@@ -1,0 +1,906 @@
+---
+title: "STAT 6021 Project 2"
+author: "Group 3: Christina Land, Xinnie Mai, Kaya Oguz, Pranav Sridhar"
+date: "`r Sys.Date()`"
+output: 
+  officedown::rdocx_document:
+    plots:
+      caption:
+        pre: "Figure "
+    fig_caption: true
+
+---
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+rm(list = ls())
+library("tidyverse")
+library("faraway")
+library("ROCR")
+library("MASS")
+
+```
+
+---
+
+# Summary of Findings
+
+In the analysis of the King County housing dataset, statistical models were used to examine the factors that influence home prices and home quality in the region. The objective was to develop tools to support buyers, sellers, and real estate professionals in making more informed decisions.
+
+A multiple linear regression model was first constructed to investigate the determinants of home prices. The most influential variables included home size, construction quality, renovation status, presence of a waterfront view, and neighborhood. For instance, larger homes and those with scenic views or higher construction grades were associated with higher sale prices. Geographic location, accounted for through latitude and longitude, revealed that homes situated further north and west tended to be more expensive. After data cleaning and the removal of outliers, the model was able to explain approximately 54% of the variation in home prices, offering strong predictive capability while remaining interpretable.
+
+Subsequently, a logistic regression model was developed to predict whether a home could be classified as “good quality.” A good quality home was defined as one possessing both a high condition rating and a high construction grade. The model indicated that homes with higher prices, recent renovations, and northern locations were more likely to meet this criterion. Additional features such as scenic views, waterfront access, and generous living space also contributed to the likelihood of a home being rated highly. This model demonstrated strong classification performance, achieving an AUC of 0.902, indicating an ability to distinguish good-quality homes from others with over 90% accuracy.
+
+These findings carry practical significance. Home buyers can leverage the insights to focus on neighborhoods and home characteristics aligned with quality and value. Sellers can identify improvements that may enhance pricing or appeal. Real estate professionals can utilize the data-driven results to inform pricing strategies, listings, and marketing efforts. Overall, the models offer a reliable foundation for decision-making in a complex and competitive real estate market.
+
+
+---
+
+# Data Description
+
+The dataset consists of home sales from May 2014 to May 2015 in King County, Washington, covering 21,613 observations. After cleaning the dataset, including removing outliers and incomplete records, the final dataset was refined to improve reliability. 
+
+Below is a detailed description of key variables in the final model and their relevance to the house price analysis:
+  
+  ***Original Variables***
+  
+  - Price (Numeric): Price of house sale in USD
+  - Bedrooms (Numeric): Total number of bedrooms
+  - Bathrooms (Numeric): Total number of bathrooms
+  - Sqft_living (Numeric): Square footage of total living area
+  - Sqft_lot (Numeric): Square footage of lot size
+  - Floors (Numeric): Number of floors
+  - Waterfront (Factor/Categorical): Whether the property has a waterfront view (0 = no, 1 = yes)
+  - View (Factor/Categorical): Rating of view quality (0 - 4 scale)
+  - Condition (Factor/Categorical): House condition scale (1 - 5 scale)
+  - Grade (Factor/Categorical): House grading scale (3 - 13 scale)
+  - Sqft_above (Numeric): Square footage of house excluding basement
+  - Sqft_basement (Numeric): Square footage of basement area
+  - Yr_built (Numeric): Year of house construction
+  - Yr_renovated (Numeric): Year the house was renovated (NA if never renovated)
+  - Lat (Numeric): Geographic latitude
+  - Long (Numeric): Geographic longitude
+  - Sqft_living15 (Numeric): Average size of interior housing living space for nearest 15 neighbors
+  - Date (Date): Date when house was sold
+  
+  ***Created Variables***
+  
+  - Effective_yr_built (Numeric): Represents the most recent year of significant construction or renovation a home underwent and uses either the original year built or renovatino year if the property has undergone renovation. This effectively captures the currenta ge or recency of structural improvements of the home.
+  - home_quality (Factor/Categorical): Defines a home to be good quality if its condition is greater than 3 and grade is greater than 7
+  
+  ***Eliminated Variables***
+  
+  - Id (Numeric): Served only as a unique identifier with no predicitve power
+  - Sqft_above (Numeric): This would be a subset of the sqft_living (total living area), using it would simultaneously cause multicollinearity
+  - Sqft_basement (Numeric): This would be a subset of the sqft_living (total living area), using it would simultaneously cause multicollinearity
+  - Sqft_lot15 (Numeric): Weaker influence compared to sqft_living15, as it is the average size of lots for the nearest 15 neighbors and may cause redundancy with sqft_living15
+  - Zipcode (Numeric): Did not seem intuitive to be a quantitative predictor and there were too many distinct values for it to be an effective factor/categorical variable
+  - Date (Numeric): Hard to interpret
+
+---
+
+# Data Issues: Observation and Variable Issues
+
+Upon ingesting the King County Housing data, several suspicious or invalid observations were identified:
+
+  - Date formatting error: The date variable was initially recorded as a timestamp character string (e.g., "20140502T000000"), which is not in a standard date format and unsuitable for time-based analysis or visualization. This likely resulted from a data entry issue.
+
+  - Unrealistic number of bedrooms and bathrooms: Several entries recorded zero bedrooms or zero bathrooms, which is highly unlikely for residential listings. These likely reflect missing values coded incorrectly as zeros.
+
+  - Extreme outliers in price and bedrooms: Some homes were listed with more than 10 bedrooms, and several properties had sale prices above the 99th percentile (e.g., over $2,000,000). While some may represent true luxury listings, these outliers are highly atypical and could skew statistical models.
+
+To address these issues and clean the data:
+
+  - The date variable was converted from a timestamp string to a proper Date object (YYYY-MM-DD format) to support time-based analysis and visualization.
+
+  - Observations with unrealistic numbers of bedrooms or bathrooms were removed.
+
+  - Extreme outliers were removed, specifically homes with more than 10 bedrooms and those with sale prices above the 99th percentile.
+
+Several variables also required restructuring or removal due to data type issues or redundancy:
+
+  - Misuse of yr_renovated: The yr_renovated variable used 0 to indicate no renovation, which could be misinterpreted as an actual year (year 0) in regression models.
+
+  - Categorical variables stored as integers: Variables such as waterfront, view, condition, grade, and zipcode were stored as integers, incorrectly suggesting a continuous or ordinal relationship.
+
+  - Redundant or non-predictive variables: Variables like id (a unique identifier) provided no predictive value, while others like sqft_above, sqft_basement (components of sqft_living), and sqft_lot15 (highly correlated with sqft_lot) introduced redundancy.
+
+To finalize preparation of the dataset for modeling:
+
+  - A new variable, effective_yr_built, was created by replacing 0 values in yr_renovated with NA and setting it to yr_renovated when available or yr_built otherwise. This better represents the most recent structural update of each home.
+
+  - Categorical variables (zipcode, view, condition, grade, and waterfront) were converted from integers to factors to ensure correct handling in regression models.
+
+  - The date variable was reformatted to a standard Date type, resolving issues with the original timestamp string.
+
+  - Redundant and non-predictive variables (id, sqft_above, sqft_basement, and sqft_lot15) were removed to reduce dimensionality and prevent multicollinearity.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+DATA <- read.csv("kc_house_data.csv", header=TRUE)
+
+#convert date to format
+DATA$date <- as.character(DATA$date)
+
+DATA$date <- as.Date(substr(DATA$date, 1, 8), format = "%Y%m%d")
+
+#convert categorical variables from int to factor
+DATA$waterfront <- as.factor(DATA$waterfront)
+DATA$view <- as.factor(DATA$view)
+DATA$condition <- as.factor(DATA$condition)
+DATA$grade <- as.factor(DATA$grade)
+DATA$zipcode <- as.factor(DATA$zipcode)
+
+#remove outliers and rows with 0 bedrooms or bathrooms 
+
+DATA <- subset(DATA, bedrooms > 0 & bathrooms > 0)
+
+DATA <- subset(DATA, bedrooms <= 10)
+
+# remove houses with the top 1% most expensive
+DATA <- subset(DATA, price <= quantile(DATA$price, 0.99))  
+
+#for those with 0 for yr_renovated, replaced with NA for those houses never renovated
+DATA$yr_renovated[DATA$yr_renovated == 0] <- NA
+
+#variables not useful for modeling --> dropped 
+DATA$id <- NULL
+DATA$sqft_above <- NULL
+DATA$sqft_basement <- NULL
+DATA$sqft_lot15 <- NULL
+
+DATA$date <- NULL
+DATA$zipcode <- NULL
+
+#new variable
+DATA <- DATA %>%
+  mutate(effective_yr_built = if_else(is.na(yr_renovated), yr_built, yr_renovated))
+
+set.seed(6021)
+
+sample.data <- sample.int(nrow(DATA), floor(0.50 * nrow(DATA)), replace = FALSE)
+
+train <- DATA[sample.data, ]
+
+test <- DATA[-sample.data, ]
+
+train <- train %>%
+  mutate(home_quality = ifelse(as.numeric(condition) > 3 & as.numeric(grade) > 7, "Good", "Other"))
+
+train$home_quality <- factor(train$home_quality)
+```
+
+---
+
+# Price and Influential Factors
+
+To explore how various factors influence home prices, data visualizations were provided across four key categories: Property Size and Structure, Property Quality and Condition, Location and Neighborhood, and Other Features such as date of sale and seasonal trends. These visualizations allowed us to assess relationships between home prices and other variables. 
+
+```{r, fig.width = 7, fig.height = 5, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="Distribution of Key Housing Features"}
+house_prices <- ggplot(train, aes(x = price)) +
+  geom_histogram () 
+year_built <- ggplot(train, aes(x = effective_yr_built)) +
+  geom_histogram() 
+sq_ft_living_area <- ggplot(train, aes(x = sqft_living)) +
+  geom_histogram() 
+num_bedrooms <- ggplot(train, aes(x = bedrooms)) +
+  geom_bar() 
+num_bathrooms <- ggplot(train, aes(x = bathrooms)) +
+  geom_bar() 
+house_condition <- ggplot(train, aes(x = condition)) +
+  geom_bar() 
+house_grade <- ggplot(train, aes(x = grade)) +
+  geom_bar() 
+renovation_status <- ggplot(train, aes(x = ifelse(is.na(yr_renovated), "No Renovation", "Renovated"))) +
+  geom_bar() +
+  labs(x="Renovation Status")
+
+library(gridExtra)
+gridExtra::grid.arrange(house_prices, year_built, sq_ft_living_area, num_bedrooms, num_bathrooms, house_condition, house_grade, renovation_status, ncol = 2, nrow = 4)
+```
+
+The histograms reveal the distributions of several key housing attributes—bedrooms, bathrooms, condition, grade, and renovation status—offering insights into the overall composition and quality of the homes in the dataset. Most homes feature 3 or 4 bedrooms, with 3 bedrooms being the most common. Large homes with 8 or more bedrooms are rare. In terms of bathrooms, the majority of properties have between 1.5 and 2.5 bathrooms, consistent with typical mid-sized family homes.
+
+Most homes are rated in the middle range for condition, with the majority falling between a condition rating of 3 or 4, suggesting an average to good state of maintenance. Homes rated in the extremes (either very poor or excellent) are relatively uncommon. Similarly, the majority of homes fall within grade 6 to 8, indicating mid-range quality and construction, while homes with either very low or very high grades are rare, highlighting a market dominated by moderately high-quality properties.
+
+Homes with more than 4 bathrooms are uncommon, and the majority of homes have not undergone renovations, suggesting that many remain in their original condition. A small number of properties show evidence of renovation, which could potentially influence their market value.
+
+Most homes feature 3 or 4 bedrooms, with 3 being the most common, while large homes with 8 or more bedrooms are rare. In terms of bathrooms, the majority of homes have between 1.5 and 2.5, which aligns with typical mid-sized family homes.
+
+The condition ratings for most homes fall between 3 and 4, suggesting that the majority are in average to good condition, with very poor or excellent condition ratings being relatively uncommon. Similarly, most homes fall within grade 6 to 8, indicating mid-range construction and quality, with few homes rated either very low or very high, suggesting a housing market that is primarily of moderate to high quality.
+
+Homes with more than 4 bathrooms are rare, and the vast majority of homes have not been renovated, indicating they are in their original condition. Only a small percentage of homes show evidence of renovation, which may influence their market value in some cases.
+
+Overall, the dataset consists primarily of mid-sized homes with 3–4 bedrooms, 1.5–2.5 bathrooms, and rated average to good in both condition and grade, with renovations being a relatively rare feature. Also, the dataset is dominated by mid-sized homes (3–4 bedrooms, 1.5–2.5 bathrooms), with most properties rated average to good in both condition and grade, and renovated homes being relatively rare.
+
+```{r, fig.width = 7, fig.height = 5, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="House Pricing by Number of Bedrooms and Bathrooms"}
+price_vs_bedrooms <- ggplot(train, aes(x = factor(bedrooms), y = price)) +
+  geom_boxplot() +
+  labs(x="Bedrooms")
+price_vs_bathrooms <- ggplot(train, aes(x = factor(bathrooms), y = price)) +
+  geom_boxplot() +
+  labs(x="Bathrooms")
+grid.arrange(price_vs_bedrooms, price_vs_bathrooms, ncol = 1, nrow = 2)
+```
+
+The above boxplots examine how bedroom and bathroom counts relate to home prices. It can be seen that there is a slight increase in median price with more bedrooms, but the trend is inconsistent beyond five bedrooms, and price variability remains high. In contrast when observing the boxplot for bathrooms, it is revealed that there is a more consistent rise in median price as the bathroom count increases from 1 to 4, with fewer low-price outliers in higher bathroom categories. Overall, the bathroom count is a stronger and more reliable predictor of home price than the bedroom count.
+
+
+```{r, fig.width = 7, fig.height = 5, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="House Pricing by Number of Floors"}
+p1 <- ggplot(train, aes(x = factor(floors))) +
+  geom_bar() +
+  labs(x="Floors")
+p2 <- ggplot(train, aes(x = factor(floors), y = price)) +
+  geom_boxplot()  +
+  labs(x="Floors")
+grid.arrange(p1, p2, ncol=1, nrow=2)
+```
+
+These two visualizations above analyze the distribution of homes by the number of floors and how floor count relates to home prices. Most homes have 1 or 2 floors, while multi-level homes (e.g., 1.5, 2.5, 3 floors) are uncommon. The boxplot shows no clear linear relationship between floor count and price. Although homes with 2 and 2.5 floors have slightly higher median prices, high-priced outliers appear across all floor categories. This suggests that floor count has a limited and nonlinear impact on home price.
+
+```{r, fig.width = 7, fig.height = 5, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="Impact of Lot Size and Living Square Footage on Price"}
+p1 <- ggplot(train, aes(x = sqft_lot)) +
+  geom_histogram()
+p2<- ggplot(train, aes(x = sqft_lot, y = price)) +
+  geom_point()
+p3 <- ggplot(train, aes(x = sqft_living, y = price)) +
+  geom_point() +
+  geom_smooth(method = "lm") 
+grid.arrange(p1, p2, p3, ncol=1, nrow=3)
+```
+
+These  plots analyze the relationship between lot size and home price, adding valuable insight into how this variable impacts property value. The first plot shows a right-skewed distribution, with most lots under 20,000 sqft and a few significant outliers distorting from the scale. The second plot shows no clear linear relationship between lot size and price, where many high-priced homes have modest-sized lots, which means that lot size alone is not a strong predictor of value. While some large-lot properties are expensive, the lot size on price appears limited, which means that other factors play a more significant role in determining home value. In the scatterplot of price against living square footage, a strong positive linear relationship is shown. As living space increases, home prices tend to rise significantly. The fitted regression line emphasizes this. While the trend is generally going upward, there's noticeable dispersion. This is particularly true for larger homes, indicating that they are beyond a specific size. Overall, the living area is a strong predictor of home price.
+
+
+```{r, fig.width = 7, fig.height = 5, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="Influence of Neighborhood Size and Floor Count on House Pricing"}
+p1 <- ggplot(train, aes(x = sqft_living15, y = price)) +
+  geom_point() +
+  geom_smooth(method = "lm")
+p2<- ggplot(train, aes(x = sqft_living15, y = price, color = factor(floors))) +
+  geom_point()
+grid.arrange(p1, p2, ncol=1, nrow=2)
+```
+
+These two scatter plots demonstrates a positive correlation between neighborhood average living space (sqft_living15) and home prices. It indicates that homes in areas with larger average home sizes tend to be more expensive. Floor count adds a stratifying layer to this relationship, where most homes have 1 or 2 floors, with 2-floor homes (green), which dominates across all price levels, in particular the higher range. In contrast, 1-floor homes (red) are concentrated in the lower-price, smaller-size segment, while homes with more than 2 floors are less common but tend to align with higher prices. 
+
+```{r, fig.width = 7, fig.height = 5, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="House Condition and Renovation Status"}
+price_condition <- ggplot(train, aes(x = condition, y = price)) +
+  geom_boxplot() 
+price_renovation_status <- ggplot(train, aes(x = ifelse(is.na(yr_renovated), "No Renovation", "Renovated"), y = price)) +
+  geom_boxplot()  +
+  labs(x="Renovation Status")
+grid.arrange(price_condition, price_renovation_status,
+             ncol = 1, nrow = 2)
+```
+
+The two boxplots presented here demonstrate the impact of how house conditions and renovation status influence home prices. In the first boxplot, median prices increase slightly with homes that have a better condition rating. Still, price variability is high across all levels, which indicates that  condition alone is not a strong influencer of value. In contrast, the second boxplot shows that renovated homes consistently have higher median prices and broader upper price ranges, indicating that renovation contributes more significantly to a home’s market value than condition alone.
+
+```{r, fig.width = 7, fig.height = 5, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="Waterfront House Location and Price"}
+price_vs_waterfront <- ggplot(train, aes(x = waterfront, y = price, fill = waterfront)) +
+  geom_boxplot()
+living_area_vs_waterfront <- ggplot(train, aes(x = waterfront, y = sqft_living, fill = waterfront)) +
+  geom_boxplot() 
+grid.arrange(price_vs_waterfront, living_area_vs_waterfront,
+             ncol = 1, nrow = 2)
+```
+
+The data reveals the impact of waterfront status on house prices and size. Homes with a waterfront location generally show significantly higher median prices and a wider price range compared to non-waterfront properties. Additionally, waterfront homes tend to have slightly larger living areas on average. However, the price premium for waterfront homes appears to be more driven by their location rather than their size, emphasizing the value of scenic or exclusive positioning. This highlights the substantial role that location and scenic amenities play in real estate value, positioning waterfront status as a key factor in high-end home pricing.
+
+
+```{r, fig.width = 7, fig.height = 5, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="Impact of View Rating on Property Value"}
+p1 <- ggplot(train, aes(x = view)) +
+  geom_bar() 
+p2 <- ggplot(train, aes(x = view, y = price)) +
+  geom_boxplot() 
+grid.arrange(p1, p2, ncol=1, nrow=2)
+```
+
+The distribution and pricing impact of scenic views are evident in the data. Most homes have a view rating of 0, indicating no notable view, while homes with higher ratings (1–4) are relatively rare. As view ratings increase, there is a clear upward trend in median price, with the highest-rated homes (view 4) commanding significantly higher prices and wider price ranges. Even homes with modest views (ratings 1–2) show a noticeable increase in value. These findings highlight that scenic views significantly enhance property value, with their rarity further amplifying their impact on pricing.
+
+```{r, fig.width = 7, fig.height = 5, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="Impact of Effective Year Built and Living Area on Price"}
+p1 <- ggplot(train, aes(x = effective_yr_built, y = price)) +
+  geom_point() +
+  geom_smooth(method = "lm")
+p2 <- ggplot(train, aes(x = sqft_living, y = price, color = effective_yr_built)) +
+  geom_point(alpha = 0.5) +
+  scale_color_gradient(low = "green", high = "red") +
+  geom_smooth(method = "lm")
+grid.arrange(p1, p2, ncol=1, nrow=2)
+```
+
+The data highlights the influence of construction year and home size on price trends, as well as the relationship between home prices, effective year built, and living area, illustrating how these factors affect property value. There is a slight upward trend in prices over time, with newer homes (built post-2000) generally priced higher, despite some variability across decades. Additionally, a strong positive correlation is observed between living area and price, with newer homes typically being both larger and more expensive. These findings suggest that newer construction and larger home size are significant drivers of higher property value.
+
+
+```{r, fig.width = 7, fig.height = 5, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="Relationship between Construction Quality (Grade) and Size"}
+p1 <- ggplot(train, aes(x = grade, y = sqft_living)) +
+  geom_boxplot() 
+p2 <- ggplot(train, aes(x = sqft_living, y = price, color = grade)) +
+  geom_point() +
+  geom_smooth(method = "lm") 
+grid.arrange(p1, p2, ncol=1, nrow=2)
+```
+
+The visualization illustrates the combined influence of construction quality and size on home prices. Higher-grade homes are generally larger, with greater size variation as grade increases. Additionally, while price rises with size across all grades, the rate of price increase is more pronounced for higher-grade homes. This indicates that premium construction enhances the price impact of additional square footage, further emphasizing the value of high-quality construction in pricing.
+
+```{r, fig.width = 7, fig.height = 5, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="Renovation Status, Living Area, and Construction Quality (Grade) impacts on Price"}
+p1 <- ggplot(train, aes(x = sqft_living, y = price, color = ifelse(is.na(yr_renovated), "No Renovation", "Renovated"))) +
+  labs(color="Renovation Status")+
+  geom_point() +
+  geom_smooth(method = "lm") 
+p2 <- ggplot(train, aes(x = sqft_living, y = price, color = grade)) +
+  geom_point() +
+  geom_smooth(method = "lm") 
+grid.arrange(p1, p2, ncol=1, nrow=2)
+```
+
+The above plots compare the effects of renovation and construction quality on price per square foot, illustrating how these factors interact with living area to influence home prices. Renovation status and construction quality play significant roles in determining the value of a property. Renovated homes generally command higher prices at any given square footage compared to non-renovated homes, with a more pronounced price trend as size increases, suggesting that renovations add considerable value. Additionally, construction quality (grade) impacts the price per square foot, with higher-grade homes not only tending to be larger but also experiencing steeper price increases per square foot. This highlights that both home size and construction quality work together to significantly increase property value, particularly in higher-end homes.
+
+```{r, fig.width = 7, fig.height = 5, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="Impact of Construction Quality (Grade) on Price for Waterfront and Non-Waterfront Homes"}
+ggplot(train, aes(x = grade, y = price, fill = waterfront)) +
+  geom_boxplot() 
+```
+
+The above boxplot showing how house grade and waterfront status affect home prices. Prices rise consistently with higher grades, demonstrating the value of reconstruction. Waterfront homes (blue) have higher median prices across nearly all grade levels compared to non-waterfront homes (red), with the price gap widening at higher grades. This shows that waterfront access can further amplify the value of already high-quality homes, especially at the upper end of the market.
+
+
+```{r, fig.width = 7, fig.height = 5, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="Neighborhood Size impact on Price"}
+p1 <- ggplot(train, aes(x = sqft_living15)) +
+  geom_histogram()
+p2 <- ggplot(train, aes(x = sqft_living15, y = price)) +
+  geom_point() +
+  geom_smooth(method = "lm")
+grid.arrange(p1, p2, ncol=1, nrow=2)
+
+```
+
+The above two scatterplots present the distribution of neighborhood average living area (sqft_living15), demonstrating insight into typical home sizes within local communities. The distribution is right-skewed, with most neighborhood averages clustered between 1,200 and 2,500 square feet. The most common average size falls just below 2,000 sqft, representing that mid-sized homes dominate the market. A small number of neighborhoods show much larger average sizes (over 4,000 sqft). Most neighborhoods have featured moderately sized homes, with average living areas below 2,500 sqft. The skew toward larger averages in a few neighborhoods indicates an influence on local property values and pricing trends.
+
+The relationship between the neighborhood average living area (sqft_living15) and home price this figure also highlights how neighborhood characteristics can influence property value. There is a strong positive correlation between average neighborhood home size and individual home price. The upward-sloping regression line confirms that homes in neighborhoods with larger average home sizes tend to be more expensive. Despite some scatter, the trend indicates that neighborhood context, especially the size norms, plays a significant role in shaping home values. Homes in neighborhoods with larger average living areas and higher prices can reflect the influence of surrounding property characteristics on perceived value.
+
+```{r, fig.width = 7, fig.height = 5, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="Impact of Geographic Location (Latitude and Longitude) on Price"}
+library(ggmap)
+library(ggplot2)
+register_google(key = "AIzaSyDBW5QHIyHtwIzRMAiYn6ismZrn0eaR9MY")
+
+seattle_map <- get_map(location = "Seattle", zoom = 10, maptype = "roadmap", source = "google")
+
+ggmap(seattle_map) +
+  geom_point(data = DATA, aes(x = long, y = lat, color = price), alpha = 0.5, size = .5) +
+  scale_color_gradient(low = "steelblue", high = "red") +
+  theme_minimal()
+```
+
+Lastly, the above map shows a visualization of home prices across King County, Washington, using color to represent price levels. Darker red points indicate higher-priced homes, while lighter blue points represent lower-priced homes. A clear spatial pattern emerges: higher home prices are concentrated in the northeast quadrant of the map. In contrast, southern and southwestern areas display consistently lower prices.
+
+---
+
+# Multiple Linear Regression (MLR) for Price
+
+From the previous section, there appear to be a multitude of factors that can influence house pricing. As a result, a multiple linear regression model was constructed to identify key predictors (quantitative and categorical) to best predict a house's price.
+
+```{r, fig.width = 7, fig.height = 5, echo=FALSE, message=FALSE, warning=FALSE, fig.cap = "Correlation Matrix of Quantitative Predictors with Price"}
+library(GGally)
+
+numeric_predictors <- c("price", "bedrooms", "bathrooms", "sqft_living", "sqft_lot", "floors", "yr_built", "lat", "long", "sqft_living15")
+
+# Subset the data to include only the columns you want
+train_subset <- train[, numeric_predictors]
+
+round(cor(train_subset), 3)
+```
+
+```{r, fig.width = 7, fig.height = 5, echo=FALSE, message=FALSE, warning=FALSE, fig.cap = "Correlation Matrix of Qualitative (Categorical) Predictors with Price "}
+# Scatterplot matrix using base R
+# Load the GGally package
+library(GGally)
+
+# Scatterplot matrix using ggpairs
+ggpairs(train[, c("grade", "view", "waterfront", "condition", "price")])
+
+```
+```{r, fig.width = 7, fig.height = 5, echo=FALSE, message=FALSE, warning=FALSE, fig.cap = "Box Plots for Price versus Categorical Variables"}
+library(ggplot2)
+
+p1 <- ggplot(train, aes(x = grade, y = price)) +
+  geom_boxplot(fill = "skyblue", color = "black", outlier.color = "red", outlier.shape = 16) 
+
+library(ggplot2)
+
+p2 <- ggplot(train, aes(x = waterfront, y = price)) +
+  geom_boxplot(fill = "lightblue", color = "black", outlier.color = "red", outlier.shape = 16) 
+
+library(ggplot2)
+
+p3 <- ggplot(train, aes(x = view, y = price)) +
+  geom_boxplot(fill = "lightgreen", color = "black", outlier.color = "red", outlier.shape = 16) 
+
+library(ggplot2)
+
+p4 <- ggplot(train, aes(x = condition, y = price)) +
+  geom_boxplot(fill = "lightcoral", color = "black", outlier.color = "red", outlier.shape = 16) 
+
+grid.arrange(p1, p2, p3, p4, ncol=2, nrow=2)
+```
+
+The correlation matrix was used to select numerical predictors for the initial regression model by identifying variables with strong linear relationships with price. After examining the numerical predictors, a scatterplot matrix was employed to explore the relationship between categorical predictors and price. This helped identify several variables that were strongly linked to the response. To further assess their linearity with price, individual scatter plots were created for these categorical predictors. This additional analysis reaffirmed the inclusion of these variables in the regression model. After the key numerical predictors and categorical variables were identified, they were fitted into an initial multiple linear regression model.
+
+```{r, fig.width = 7, fig.height = 5, echo=FALSE, message=FALSE, warning=FALSE, fig.cap = ""}
+correlation_model <- lm(formula = price ~ bedrooms + bathrooms + sqft_living + floors + lat + sqft_living15 + condition + waterfront + view + grade, data = train)
+```
+
+```{r, fig.width = 7, fig.height = 5, echo=FALSE, message=FALSE, warning=FALSE, fig.cap = "Residual plot and associated plots for initial linear regression model"}
+# 1. Linearity and Residuals vs Fitted Plot
+par(mfrow = c(2, 2))
+plot(correlation_model)
+```
+
+Vertical variation is not consistent throughout. Plot the box cox.
+```{r, fig.width = 7, fig.height = 5, echo=FALSE, message=FALSE, warning=FALSE, fig.cap = "Residual Plots and Boxcox Plot"}
+# Load necessary library
+library(MASS)
+
+# Fit the initial model
+# Perform the Box-Cox transformation
+boxcox(correlation_model, lambda = seq(-2, 2, 0.1))
+```
+
+After the initial model was fitted, the regression assumptions, including homoscedasticity, normality of residuals, and linearity, were carefully examined. Heteroscedasticity was observed in the residuals. To address this, a Box-Cox transformation was applied, revealing that a log transformation of the dependent variable was necessary to improve the model’s fit. After the log transformation was applied to the response variable, the model was refitted with log price as the dependent variable, and the regression assumptions were met.
+
+```{r, fig.width = 7, fig.height = 5, echo=FALSE, message=FALSE, warning=FALSE, fig.cap = "Residuals and ssociated plots with log-transformed response variable linear regression model"}
+train$log_price <- log(train$price)
+
+correlation_model <- lm(formula = log_price ~ bedrooms + bathrooms + sqft_living + floors + lat + sqft_living15 + condition + waterfront + view + grade, data = train)
+
+# 1. Linearity and Residuals vs Fitted Plot
+# par(mfrow = c(2, 2))
+# plot(correlation_model)
+
+```
+
+```{r, fig.width = 7, fig.height = 5, echo=FALSE, message=FALSE, warning=FALSE, fig.cap = "Scatterplot matrixfor quantitative predictors"}
+# Scatterplot matrix using base R
+# Load the GGally package
+library(GGally)
+
+# Scatterplot matrix using ggpairs
+ggpairs(train[, c("bedrooms", "bathrooms", "sqft_living", "floors", "lat", "sqft_living15", "log_price")])
+
+```
+
+```{r, fig.width = 7, fig.height = 5, echo=FALSE, message=FALSE, warning=FALSE, fig.cap = "Scatterplot of log(price) against various predictor variables"}
+p1 <- ggplot(train, aes(x = bedrooms, y = log_price)) +
+  geom_point(color = "darkblue", alpha = 0.6) 
+p2 <- ggplot(train, aes(x = bathrooms, y = log_price)) +
+  geom_point(color = "darkblue", alpha = 0.6) 
+p3 <- ggplot(train, aes(x = sqft_living, y = log_price)) +
+  geom_point(color = "darkblue", alpha = 0.6) 
+p4 <- ggplot(train, aes(x = sqft_living15, y = log_price)) +
+  geom_point(color = "darkblue", alpha = 0.6) 
+
+grid.arrange(p1, p2, p3, p4, ncol=2, nrow=2)
+```
+
+```{r, fig.width = 7, fig.height = 5, echo=FALSE, message=FALSE, warning=FALSE, fig.cap = ""}
+train$log_bedrooms <- log(train$bedrooms)
+train$log_bathrooms <- log(train$bathrooms)
+train$log_sqft_living <- log(train$sqft_living)
+train$log_sqft_living15 <- log(train$sqft_living15)
+```
+
+Then, a scatterplot matrix of the predictors included in the model was created to visually inspect their relationships with log_price to assess the need for any transformations of predictors, checking for any logarithmic relationships with log_price. Individual scatterplots of these predictors against log_price were then created to further confirm the presence of a logarithmic association. Once these were identified, the predictors were log-transformed and the model was refitted. Following the refitting of the model, the regression assumptions were reassessed and met. Next, VIF’s of the predictor variables were examined for multicollinearity. The results showed that the only variables with high multicollinearity were grade and condition, which is expected. 
+
+```{r, fig.width = 7, fig.height = 5, echo=FALSE, message=FALSE, warning=FALSE, fig.cap = ""}
+correlation_model <- lm(formula = log_price ~ log_bedrooms + log_bathrooms + log_sqft_living + floors + lat + log_sqft_living15 + condition + waterfront + view + grade, data = train)
+
+```
+
+```{r, fig.width = 7, fig.height = 5, echo=FALSE, message=FALSE, warning=FALSE, fig.cap = "Residual plot and associated plots for new linear regression model with transformed predictors and response variable"}
+train$log_price <- log(train$price)
+
+correlation_model <- lm(formula = log_price ~ log_bedrooms + log_bathrooms + log_sqft_living + floors + lat + log_sqft_living15 + condition + waterfront + view + grade, data = train)
+
+# 1. Linearity and Residuals vs Fitted Plot
+# par(mfrow = c(2, 2))
+# plot(correlation_model)
+
+```
+
+```{r, fig.width = 7, fig.height = 5, echo=FALSE, message=FALSE, warning=FALSE, fig.cap = "VIFs of Selected Predictors in Initial Model"}
+library(faraway)
+# Calculate VIF values
+vif_values <- faraway::vif(correlation_model)
+
+
+print(vif_values)
+
+
+```
+
+After multicollinearity was addressed, backward elimination was performed to refine the model. During this process, the variable log_bathrooms was dropped, as it was not contributing significantly to the model. To compare the models before and after backward elimination, an ANOVA test was conducted. The p-value from the ANOVA test was greater than 0.05, so the log_bathrooms predictor didn’t contribute significantly to the model. So, the model from backward elimination was chosen.
+
+```{r, fig.width = 7, fig.height = 5, echo=FALSE, message=FALSE, warning=FALSE, fig.cap = "Summary of B ackward Selection Model"}
+# Fit the full model with all predictors
+correlation_model <- lm(formula = log_price ~ log_bedrooms + log_bathrooms + log_sqft_living + 
+                         floors + lat + log_sqft_living15 + condition + waterfront + 
+                         view + grade, data = train)
+
+# Perform backward elimination using step function
+backward_model <- step(correlation_model, direction = "backward")
+
+# View the summary of the final model
+summary(backward_model)
+
+```
+
+```{r, fig.width = 7, fig.height = 5, echo=FALSE, message=FALSE, warning=FALSE, fig.cap = "ANOVA Output Between Backward Selection Model and Initial Model"}
+# Perform ANOVA to compare the two models
+anova(backward_model, correlation_model)
+```
+
+```{r, fig.width = 7, fig.height = 5, echo=FALSE, message=FALSE, warning=FALSE, fig.cap = "Summary of Final Model"}
+final_model <- lm(formula = log_price ~ log_bedrooms + log_sqft_living + floors + 
+    lat + log_sqft_living15 + condition + waterfront + view + 
+    grade, data = train)
+coefficients(final_model)
+```
+
+```{r, fig.width = 7, fig.height = 5, echo=FALSE, message=FALSE, warning=FALSE, fig.cap = "Residual plot of final linear regression model"}
+
+par(mfrow = c(2, 2))
+plot(final_model)
+```
+
+```{r, fig.width = 7, fig.height = 5, echo=FALSE, message=FALSE, warning=FALSE, fig.cap = "100 highest leverage observations"}
+hii<-lm.influence(final_model)$hat ##leverages
+ext.student<-rstudent(final_model) ##ext studentized res
+n<-nrow(train)
+p<-24
+
+
+# tail(sort(hii[hii > 2 * p / n]), 100)
+
+```
+
+```{r, fig.width = 7, fig.height = 5, echo=FALSE, message=FALSE, warning=FALSE, fig.cap = "Top 10 leverage rows of data"}
+# Get the top 10 leverage points with the condition hii > 2 * p / n
+top_leverage_points <- tail(sort(hii[hii > 2 * p / n]), 10)
+
+# Extract the row indices of the top 10 leverage points
+top_leverage_rows <- which(hii %in% top_leverage_points)
+
+# Print the rows of the top 10 leverage points
+top_leverage_rows_data <- train[top_leverage_rows, ]
+# print(top_leverage_rows_data)
+
+
+```
+
+```{r, fig.width = 7, fig.height = 5, echo=FALSE, message=FALSE, warning=FALSE, fig.cap = ""}
+# Load the dplyr package if not already loaded
+library(dplyr)
+
+# Remove row 3224 from the train dataset and update train
+train <- train %>%
+  filter(row_number() != 3224)
+```
+
+```{r, fig.width = 7, fig.height = 5, echo=FALSE, message=FALSE, warning=FALSE, fig.cap = "Studentized residuals that flagged as outliers"}
+# Sort studentized residuals where absolute value is greater than 3
+sorted_ext_student <- sort(ext.student[abs(ext.student) > 3])
+
+# Print the sorted values
+# print(sorted_ext_student)
+```
+
+```{r, fig.width = 7, fig.height = 5, echo=FALSE, message=FALSE, warning=FALSE, fig.cap = "Output of studentized residuals that are the most extreme (>4)"}
+# Identify rows where the absolute studentized residuals are greater than 4
+extreme_rows_4 <- which(abs(ext.student) > 4)
+
+# View the rows in the dataset corresponding to those indices
+extreme_data_4 <- train[extreme_rows_4, ]
+
+# View the extreme rows
+# print(extreme_data_4)
+
+```
+
+```{r, fig.width = 7, fig.height = 5, echo=FALSE, message=FALSE, warning=FALSE, fig.cap = "Influential observations flagged by Cook's distance"}
+COOKS<-cooks.distance(final_model)
+# COOKS[COOKS>1]
+```
+
+After the model was finalized, potential outliers, high leverage, and influential observations were examined. First, the regression assumptions were reviewed to see any distinctive values based on Cook’s distance. Then, the dataset was examined using Cook's distance threshold, but none of the observations had extreme Cook's distance values so there were no highly influential points present in the dataset. This is most likely due to the fact that in a larger dataset, the influence of an observation on the model is not very large.
+
+To examine potential high leverage points, the top 100 observations with the highest leverage values, accounting for approximately 1% of the dataset, were focused on. Upon reviewing these observations, an observation stood out with a leverage value of 1.000. This observation was possibly a unique property that did not follow the general trend of larger homes in more populated areas, with fewer bedrooms and bathrooms. It could be a home with a large lot compensating for the smaller living area, which set it apart from the other data points. Given the clear deviation of the high leverage observation of 1.000, this was removed. The other high leverage values were within a reasonable range for the data columns. These observations were possibly larger homes with more square footage, so they were not removed from the dataset. They could be used for further discussion of homes that might be larger in size and contain more square footage, so they weren’t removed from the dataset.
+
+To investigate potential outliers, the studentized residuals were first examined, flagging those with absolute values greater than 3 for closer inspection. Residuals greater than 4 were then given further attention. After reviewing, it was determined that the outliers, while noticeable, should remain in the dataset. High price homes could be outliers because they might be in upscale neighborhoods. On the other hand, lower-priced homes might be undervalued. So these factors could be driving the price and making these outliers heavily skewed. These are important values that can be looked at and they provide interesting case studies on what might be driving higher or lower priced houses.
+
+```{r, fig.width = 7, fig.height = 5, echo=FALSE, message=FALSE, warning=FALSE, fig.cap = ""}
+test$log_price <- log(test$price)
+test$log_bedrooms <- log(test$bedrooms)
+test$log_bathrooms <- log(test$bathrooms)
+test$log_sqft_living <- log(test$sqft_living)
+test$log_sqft_living15 <- log(test$sqft_living15)
+```
+
+```{r, fig.width = 7, fig.height = 5, echo=FALSE, message=FALSE, warning=FALSE, fig.cap = " "}
+# Exclude the single row with grade == 13 in test dataset
+test <- test[test$grade != 13, ]
+
+# Retry predictions
+predictions <- predict(final_model, newdata = test)
+
+# predictions <- predict(final_model, newdata = test)
+```
+
+```{r, fig.width = 7, fig.height = 5, echo=FALSE, message=FALSE, warning=FALSE, fig.cap = "Metrics of final regression model"}
+# Calculate metrics
+MAE <- mean(abs(predictions - test$log_price))  # Mean Absolute Error
+RMSE <- sqrt(mean((predictions - test$log_price)^2))  # Root Mean Squared Error
+SSR <- sum((predictions - mean(test$log_price))^2)  # Sum of Squares for Regression
+SST <- sum((test$log_price - mean(test$log_price))^2)  # Total Sum of Squares
+R_squared <- 1 - sum((test$log_price - predictions)^2) / SST  # R-squared
+
+# Combine the metrics into a single data frame for easy comparison
+metrics <- data.frame(
+  Metric = c("MAE", "RMSE", "R_squared"),
+  Value = c(MAE, RMSE, R_squared)
+)
+
+# Print the metrics
+# print(metrics)
+```
+
+
+
+```{r, fig.width = 7, fig.height = 5, echo=FALSE, message=FALSE, warning=FALSE, fig.cap = "Predicted versus Actual log(prices)"}
+length(train$log_price)
+length(test$log_price)
+
+# Now plot
+plot(test$log_price, predictions, 
+     main = "Predicted vs Actual Log Prices", 
+     xlab = "Actual Log Prices", 
+     ylab = "Predicted Log Prices", 
+     pch = 19, col = "blue")
+
+abline(0, 1, col = "red", lty = 2)
+```
+
+After the model was fitted, it was tested on the test dataset to assess its performance. Key metrics were calculated, including the Mean Absolute Error (MAE), Root Mean Squared Error (RMSE), and R-squared. The MAE was found to be 0.203, meaning that, on average, the model's predictions differed from the actual values by about 0.203 units. The RMSE, which was 0.262, suggested that the model's errors were somewhat variable, with larger discrepancies being penalized more. The R-squared value of 0.726 indicated that the model explained about 72.6% of the variance in the log-transformed house prices, showing a good fit. These metrics offered valuable insight into the model's predictive accuracy and how well it generalizes to new data.
+
+Examining the predictors in the model, its structure was unsurprising overall, but a few aspects stood out. Square footage, condition, and the number of floors are common predictors for house prices, so their significant roles in the model were expected. What was particularly noteworthy, however, was the necessity of log-transforming certain variables, such as price, square footage, and bedrooms. The log transformations highlighted how these variables do not increase in a linear fashion—larger houses, for instance, do not necessarily cost exponentially more. This aligns with what the real estate industry would look like. The grade of the house, which represents its quality, was also key in predicting price. This made sense too, since newer, high-quality homes are often priced much higher than older, lower-quality ones.
+
+In conclusion, the model demonstrates strong accuracy in predicting home prices in King County, Washington. With an R-squared value of 0.726, the model explains approximately 72.6% of the variability in house prices, indicating it captures most of the key factors influencing home values. The low Mean Absolute Error shows that the predictions are close to actual values on average, while the low Root Mean Squared Error suggests that any larger errors are not significant enough to diminish its overall effectiveness. While there is still some unexplained variability, the model’s strong performance suggests it is a useful tool for accurately estimating home prices in the region.
+
+---
+
+# Good Quality Homes and Influential Factors
+
+Another goal of this analysis is to explore which characteristics are most associated with good quality homes in King County, Washington, where "good quality" is defined as homes with a condition score greater than 3 and a grade value greater than 7. Through a series of data visualizations, we examine how features such as price, size, layout, construction year, location, and aesthetic elements like views and waterfront access differ between "Good" and "Other" homes.
+
+```{r, fig.width = 7, fig.height = 5, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="Home Quality and Condition"}
+p1 <- ggplot(train, aes(x = condition, fill = home_quality)) +
+  geom_bar(position = "fill", alpha=0.5) +
+  scale_fill_manual(values = c("Good" = "blue", "Other" = "red")) +
+  theme_minimal()
+
+p2 <- ggplot(train, aes(x = grade, fill = home_quality)) +
+  geom_bar(position = "fill", alpha=0.5) +
+  scale_fill_manual(values = c("Good" = "blue", "Other" = "red")) +
+  theme_minimal()
+
+grid.arrange(p1, p2, ncol=1, nrow=2)
+```
+
+Based on the dataset and our criteria for a good-quality home—defined as having a condition score greater than 3 and a grade value above 7—there is a noticeable imbalance between high-quality and average or lower-quality homes in the region. The left chart confirms that only homes with a condition score above 3 meet the "Good" quality threshold, supporting our definition. The right chart further illustrates that these homes represent only a small portion of the dataset, with the majority falling under the "Other" category. This highlights a significant class imbalance in home quality across King County, Seattle.
+
+```{r, fig.width = 7, fig.height = 5, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="Price, Effective Year Built, and Living Square Footage impacts on Home Quality"}
+p1 <-ggplot(train, aes(x = price, fill = home_quality)) +
+  # geom_histogram(bins = 50, alpha = 0.6, position = "identity") +
+  geom_density(alpha=0.5)+
+  scale_fill_manual(values = c("Good" = "green", "Other" = "red")) +
+  theme_minimal()
+
+p2 <- ggplot(train, aes(x = sqft_living, y = price, fill = home_quality)) +
+  # geom_histogram(bins = 50, alpha = 0.5, position = "identity") +
+  geom_point(alpha=0.5)+
+  scale_color_manual(values = c("Good" = "blue", "Other" = "red")) +
+  theme_minimal()
+
+p3 <- ggplot(train, aes(x = effective_yr_built, y = price, color=home_quality)) +
+  geom_point() +
+  theme_minimal()
+
+grid.arrange(p1, p2, p3, ncol=2, nrow=2)
+```
+
+In these visualizations, the price trends and structural characteristics of good-quality homes are presented. These visualizations demonstrate that good-quality homes are generally associated with higher property values. The price distribution shows that good homes tend to occupy the higher end of the market. Additionally, there is a clear positive relationship between living space and price, with good homes often having both larger square footage and higher sale prices. Lastly, while good homes exist across a wide range of construction years, they tend to be concentrated among higher-priced homes built more recently, particularly after 1950.
+
+```{r, fig.width = 7, fig.height = 5, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="Home Quality against the Number of Bedrooms and Bathrooms"}
+p1 <- ggplot(train, aes(x = bedrooms, fill = home_quality)) +
+  geom_density(alpha = 0.5) +
+  scale_color_manual(values = c("Good" = "forestgreen", "Other" = "gray")) +
+  theme_minimal()
+
+p2 <- ggplot(train, aes(x = bathrooms, fill = home_quality)) +
+  geom_density(alpha = 0.5) +
+  scale_color_manual(values = c("Good" = "forestgreen", "Other" = "gray")) +
+  theme_minimal()
+
+p3 <- ggplot(train, aes(x = bedrooms, y = bathrooms, color=home_quality)) +
+  geom_point() +
+  theme_minimal()
+
+grid.arrange(p1, p2, p3, ncol=1, nrow=3)
+```
+
+These density plots show that good-quality homes generally have moderate bathrooms and bedrooms compared to other homes. The number of bathrooms in good homes tends to peak between 2.5 to 3.5, while other homes are more concentrated around 1.5 to 2.5. Good homes are more evenly spread across 3 to 5 bedrooms, whereas other homes show a sharp peak around 2 to 3 bedrooms. Together, these plots show that slightly larger homes are more likely to be classified as "Good”, rather than those with extreme size differences. 
+
+The joint distribution of bedrooms and bathrooms in homes is also presented, colored by quality classification. While most homes, both good and otherwise, exhibit a positive relationship (more bedrooms generally come with more bathrooms), high-quality homes are more concentrated around combinations of 4–5 bedrooms and 2.5–4.5 bathrooms. However, they are relatively sparse across the full distribution, indicating that even among large homes, not all are classified as “Good.” This demonstrates that while bed/bath layout may contribute to quality, it is not the sole determinant.
+
+```{r, fig.width = 7, fig.height = 5, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="Distribution of Living Square Footage and Number of Floors coded by Home Quality"}
+# Living Area vs Price
+p1 <- ggplot(train, aes(x = sqft_living, fill = home_quality)) +
+  # geom_histogram(bins = 50, alpha = 0.5, position = "identity") +
+  geom_density(alpha=0.5)+
+  scale_color_manual(values = c("Good" = "blue", "Other" = "orange")) +
+  theme_minimal()
+p2 <- ggplot(train, aes(x = floors, fill = home_quality)) +
+  geom_density(alpha = 0.5) +
+  scale_color_manual(values = c("Good" = "forestgreen", "Other" = "gray")) +
+  theme_minimal()
+
+grid.arrange(p1, p2, ncol=1, nrow=2)
+```
+
+The density plots presented above demonstrate the living area distribution by home quality. As shown, this density plot shows that good quality homes typically have larger living spaces, most commonly between 2,000 and 4,000 square feet, whereas other homes tend to peak below 2,000 sqft. The rightward shift of the "Good" home distribution indicates that larger living area is a key characteristic associated with higher home quality, supporting the idea that space is a significant factor in quality classification.
+
+As shown in the floor count distribution by home quality, it shows that most homes, regardless of quality, have either one or two floors, but good quality homes are more evenly distributed between 1.5 to 2 floors, with a slightly higher density at 2 floors. In contrast, lower-quality homes show a sharper peak at single-floor structures.
+
+```{r, fig.width = 7, fig.height = 5, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="Proportion of Good and Other Quality homes by View and Waterfront Presence"}
+p1 <- ggplot(train, aes(x = waterfront, fill = home_quality)) +
+  geom_bar(position = "fill", alpha=0.5) +
+  scale_fill_manual(values = c("Good" = "blue", "Other" = "red")) +
+  theme_minimal()
+
+p2 <- ggplot(train, aes(x = view, fill = home_quality)) +
+  geom_bar(position = "fill", alpha=0.5) +
+  scale_fill_manual(values = c("Good" = "blue", "Other" = "red")) +
+  theme_minimal()
+
+grid.arrange(p1, p2, ncol=1, nrow=2)
+```
+
+These plots demonstrate the aesthetic features and their relationships to home quality. These plots illustrate the relationship between aesthetic features, such as view ratings and waterfront access, and home quality classification. Homes with higher view scores (especially levels 3 and 4) exhibit a more significant proportion of “Good” classifications, suggesting that scenic views positively contribute to perceived quality. Similarly, waterfront homes are significantly more likely to be classified as “Good” compared to non-waterfront properties, suggesting that proximity to water is a strong indicator of premium home quality. Overall, these aesthetic features play an important role in distinguishing higher-quality homes within the data set.
+
+
+```{r, fig.width = 7, fig.height = 5, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="Home quality shown by geographic distribution"}
+p1<- ggplot(train, aes(x = lat, y = long, color = home_quality)) +
+  geom_density2d(alpha = 0.5) +
+  scale_color_manual(values = c("Good" = "blue", "Other" = "gray")) +
+  theme_minimal()
+
+library(ggmap)
+library(ggplot2)
+register_google(key = "AIzaSyDBW5QHIyHtwIzRMAiYn6ismZrn0eaR9MY")
+
+seattle_map <- get_map(location = "Seattle", zoom = 10, maptype = "roadmap", source = "google")
+library(tidyverse)
+
+train <- train %>%
+  mutate(home_quality = ifelse(as.numeric(condition) > 3 & as.numeric(grade) > 7, "Good", "Other"))
+
+train$home_quality <- factor(train$home_quality)
+
+DATA <- DATA %>%
+  mutate(home_quality = ifelse(as.numeric(condition) > 3 & as.numeric(grade) > 7, "Good", "Other"))
+
+DATA_seattle <- DATA %>%
+  filter(lat > 47.4 & lat < 47.75, long > -122.45 & long < -122.2)
+
+p2 <- ggmap(seattle_map) +
+  geom_point(data = DATA, aes(x = long, y = lat, color = home_quality), alpha = 0.5) +
+  scale_color_manual(values = c("Good" = "blue", "Other" = "gray")) +
+  theme_minimal()
+
+grid.arrange(p1, p2, ncol = 1, nrow = 2)
+```
+
+The map shown above highlights the geographic concentration of good quality homes in King County, Seattle. The contour density map (left) shows that good homes cluster most densely between latitudes 47.55–47.7 and longitudes -122.3 to -122.1, aligning with northeast Seattle and adjacent neighborhoods. The base map with plotted points (right) provides a more intuitive geographic reference, confirming that good homes are predominantly located in northern and eastern residential areas. Together, these maps suggest that location plays a significant role in determining home quality, with better-rated homes typically situated in more desirable and higher-value areas of the region. Both sets of visuals reinforce the conclusion that good quality homes tend to cluster in the northeast and east-central portions of King County, where location likely correlates with higher grade, condition, and aesthetic appeal.
+
+The overall findings from these visualizations indicate that a combination of structural features, aesthetic appeal, and geographic location significantly influences home quality in King County. Good-quality homes are not just newer or more expensive; they tend to demonstrate distinct traits that increase their value. Structurally, these homes typically offer larger living areas, more bedrooms and bathrooms, and are more likely to have two floors, being both spaciousness and functionality. Aesthetically, good homes are often those with higher view ratings or waterfront access, highlighting the role of scenic and environmental desirability in determining quality. While newer construction alone does not guarantee high quality, homes built or renovated between 1965 and 2000 are more often of good quality, suggesting enduring value in certain building eras. Altogether, the data illustrate that home quality is multifaceted, with no single factor being sufficient. Geography also plays a significant and consistent role in distinguishing good-quality homes. The latitude and longitude density plots, as well as spatial contour and basemap visualizations, all point to a clear geographic pattern: good homes are disproportionately concentrated in the northern and eastern regions of King County. These correspond to areas such as northeast Seattle, Bellevue, Kirkland, and Redmond, which are neighborhoods characterized by higher income levels, better schools, and other desirable proximities. In contrast, “Other” homes are more evenly distributed across the region, including less centralized areas.
+
+---
+
+# Logistic Regression for Good Quality Homes
+  Using logistic regression, a binary classification model was developed to predict whether a home in King County is of good quality. It is defined as having a condition score greater than 3 and a grade value greater than 7. This binary classification served as the response variable. The initial model included a wide range of predictors, such as price, number of bedrooms, number of bathrooms, square footage (sqft_living), lot size (sqft_lot), number of floors, waterfront presence, view rating, latitude, longitude, effective year built, and neighborhood size (sqft_living15). These were selected based on their relevance to housing market value and perceived quality, as well as the visualizations created in the prior section. The goal of the model was to assess which of these variables contributes most meaningfully to the likelihood that a home would be classified as "Good," considering factors that include structural, geographic, and aesthetic aspects, as well as higher home quality.
+
+```{r, fig.width = 7, fig.height = 5, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="VIFs"}
+
+result <- glm(home_quality ~ price + bedrooms + bathrooms + sqft_living + sqft_lot + floors +waterfront + view + lat + long + effective_yr_built + sqft_living15, family = binomial, data = train)
+summary(result)
+
+# library(faraway)
+# faraway::vif(result)
+
+```
+
+After fitting the initial model, it was evaluated that both the significance of predictors' p-values and multicollinearity VIFs. The summary output revealed that several variables, including sqft_lot, bathrooms, floors, sqft_living, and long. Those were not significant at thresholds of p value  > 0.05. VIF analysis showed high multicollinearity, especially among structural and location-based variables like sqft_living, lat, long, and sqft_living15.
+
+Therefore, to simplify the model and address multicollinearity, variables such as yr_built, which was already incorporated into the custom variable effective_yr_built, were removed, along with other weak predictors. This refinement resulted in a reduced model with 7 key variables. This includes price, number of bedrooms, waterfront, view, latitude, effective year built, and neighborhood size.
+
+```{r, fig.width = 7, fig.height = 5, echo=FALSE, message=FALSE, warning=FALSE, fig.cap=""}
+reduced <- glm(home_quality ~ price + bedrooms + view + waterfront + lat + effective_yr_built + sqft_living15, family=binomial, data=train)
+summary(reduced)
+faraway::vif(reduced)
+
+TS<-reduced$deviance-result$deviance
+# TS
+
+pval <- 1-pchisq(TS,5)
+crit_val <- qchisq(1-0.05,5)
+
+# pval
+# crit_val
+```
+
+The likelihood ratio test (LRT) was performed. The test statistic comparing the full and reduced models was 3.58, with a p-value of 0.733, which is far above the 0.05 significance level. This means that the data supports the reduced model that involved removing 5 predictors when attempting to classify a home as good quality or other with a smaller set of predictors.
+
+The reduced logistic regression model retained strong predictors and demonstrated between “Good” and “Other” homes. Highly significant predictors (p < 0.001) included price, lat, effective_yr_built, and sqft_living15. Moderately significant predictors were identified as bedrooms (negative coefficient), waterfront, and view4. 
+
+These variables align with earlier visualizations that showed price, location, view, and age are key determinants of home quality. Although not all view levels were individually significant, view4 (very high view rating) was significant and negatively associated with good home classification. This means that there may be other anomalies that may not always correlate with high condition and grade scores.
+
+The logistic regression equation is $\text{logit}(\text{home_quality}) = -145.7 - 2.465e^{-6}\text{price} - 0.1807\text{bedrooms} - 0.1875{I_1} - 0.2739{I_2} + 0.3076{I_3} - 0.9040{I_4} + 1.153{I_5} + 2.350\text{lat} + 0.02117\text{effective_yr_built} - 0.0009609\text{sqft_living15}$, where $I_1 = 1$ when view equals 1 and 0 if other, $I_2 = 1$ when view equals 2 and 0 if other, $I_3 = 1$ when view equals 3 and 0 if other, $I_4 = 1$ when view equals 4 and 0 if other, $I_5 = 1$ when property is at a waterfront  and 0 if not. From this equation, we can determine the following:
+
+  - The odds of a property being good quality are multiplied by 0.99 for every unit increase of price when controlling for bedrooms, view, waterfront, latitude, effective year built, and square footage of nearby properties
+  - The odds of a property being good quality are multiplied by 0.83 for every additional unit increase of bedroom while controlling for price, view, waterfront, latitude, effective year built, and square footage of nearby properties
+  - The odds of a property being good quality are 0.83 times the odds for properties with views not categorized as a 1, while controlling for price, bedrooms, waterfront, latitude, effective year built, and square footage of nearby properties
+  - The odds of a property being good quality are 0.76 times the odds for properties with views not categorized as a 2, while controlling for price, bedrooms, waterfront, latitude, effective year built, and square footage of nearby properties
+  - The odds of a property being good quality are 1.4 times the odds for properties with views not categorized as a 3, while controlling for price, bedrooms, waterfront, latitude, effective year built, and square footage of nearby properties
+  - The odds of a property being good quality are 0.40 times the odds for properties with views not categorized as a 4, while controlling for price, bedrooms, waterfront, latitude, effective year built, and square footage of nearby properties
+  - The odds of a property being good quality are 3.168 times the odds for non-waterfront properties, when controlling for price, bedrooms, view, latitude, effective year built and square footage of nearby properties
+- The odds of a property being good quality are multiplied by 10.5 for every additional unit increase of latitude when controlling for price, bedrooms, view, waterfront, effective year built, and square footage of nearby properties
+
+```{r, fig.width = 7, fig.height = 5, echo=FALSE, message=FALSE, warning=FALSE, fig.cap=""}
+test <- test %>%
+  mutate(home_quality = ifelse(as.numeric(condition) > 3 & as.numeric(grade) > 7, "Good", "Other"))
+test$home_quality <- factor(test$home_quality)
+preds<-predict(reduced,newdata=test, type="response")
+
+# table(test$home_quality, preds>0.5)
+
+```
+
+
+To evaluate how well the reduced logistic regression model generalizes to unseen data, we assessed its predictive performance on the test set. Predictions were generated using the predict() function with type = "response", and a 0.5 cutoff was applied to classify homes as "Good" or "Other." From the confusion matrix, the model correctly identifies 356 out of 401 good homes (high sensitivity), while making only 50 false positives out of over 10,200 “Other” homes (high specificity). 
+
+
+```{r, fig.width = 7, fig.height = 5, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="ROC curve"}
+library(ROCR)
+rates<-ROCR::prediction(preds, test$home_quality)
+##store the true positive and false postive rates
+roc_result<-ROCR::performance(rates,measure="tpr", x.measure="fpr")
+
+##plot ROC curve and overlay the diagonal line for random guessing
+plot(roc_result, main="ROC Curve for Reduced Model") +
+  lines(x = c(0,1), y = c(0,1), col="red")
+```
+
+To evaluate the predictive performance of the reduced logistic regression model, we applied it to the test dataset and visualized its classification accuracy using a ROC curve. As shown in the figure #, the ROC curve rises steeply toward the top-left corner, indicating a strong ability to distinguish between “Good” and “Other” homes.
+
+```{r, fig.width = 7, fig.height = 5, echo=FALSE, message=FALSE, warning=FALSE, fig.cap=""}
+auc<-ROCR::performance(rates, measure = "auc")
+auc@y.values
+```
+
+The AUC was calculated to be 0.902, which falls in the range of excellent classification performance. This means that the model can correctly rank a randomly chosen “Good” home above a randomly chosen “Other” home approximately 90.2% of the time. The curve’s shape demonstrates a low false positive rate and high true positive rate, affirming that the model makes accurate predictions across varying thresholds. Overall, this confirms that the reduced model strikes a strong balance between sensitivity and specificity, making it reliable for real-world applications.
+
+The model provides several insightful takeaways regarding the factors that influence home quality. While price has a negative coefficient, this reflects the logistic regression structure, indicating that as price increases, the odds of a home being classified as "Other" decrease. This also means that higher-priced homes are more likely to be of good quality. Latitude shows a strong positive effect, suggesting that homes located further north in King County are more likely to be classified as “Good,” which aligns with earlier geographic visualizations. The presence of waterfront access is also positively associated with good quality homes, highlighting the importance of aesthetic and locational advantages. 
+
+Additionally, the effective year built is a strong positive predictor, implying that newer or recently renovated homes are more likely to meet good quality standards. The number of bedrooms has a slight negative association with the quality classification, indicating that higher bedroom counts do not necessarily reflect better condition. The negative coefficient for view4 may show potential signs of outliers or unusual cases where very high view scores are not aligned with structural quality. These findings show that the quality of homes consists of a combination of structural, geographic, and aesthetic factors, rather than being influenced by any single variable.
+
+Through the application of logistic regression, a model was developed to help predict the likelihood of a home being classified as “Good” using accessible property data. The reduced model includes only the most relevant and statistically supported predictors, making it both interpretable and effective. It shows that good quality homes in King County are typically more expensive, located further north, newer or recently renovated, and often have desirable features like waterfront access. The model captures the multifaceted nature of home quality, highlighting the value of combining structural, aesthetic, temporal, and spatial variables. Therefore, the model can be useful for predictive insights for buyers and realtors, demonstrating how high-quality homes are predicated. 
+
+---
+
+\newpage
+# Citations

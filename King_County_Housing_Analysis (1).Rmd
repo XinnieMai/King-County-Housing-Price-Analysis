@@ -1,0 +1,60 @@
+
+---
+title: "King County Housing Price Analysis"
+author: "Generated Report"
+date: "`r Sys.Date()`"
+output: word_document
+---
+
+<span style="color:black"><h2>Section 1: Analysis Results and Practical Implications</h2></span> Analysis Results and Practical Implications
+
+This study used a multiple linear regression model with a log-transformed target variable to predict house prices in King County, Washington. The model identified several statistically significant predictors that influence property values. Notably, the square footage of living space, presence of waterfront, quality of view, construction grade, and year of renovation emerged as the strongest influencers. Geographic coordinates, latitude and longitude, and neighborhood characteristics, such as the size of nearby homes, also contributed meaningfully to the model. The model demonstrated **strong performance**, with an adjusted R-squared value of approximately 78.7%, indicating a strong fit and predictive capability. These insights offer practical value for various stakeholders: homeowners and sellers can optimize renovation investments, buyers can make data-informed decisions, and real estate professionals can enhance pricing strategies.
+
+<span style="color:black"><h2>Section 2: Data and Variables</h2></span> Data and Variables
+
+The dataset consists of home sales from May 2014 to May 2015 in King County, Washington, covering 21,613 observations. After cleaning, the final dataset excluded outliers and incomplete records to improve model reliability. Below is a list of the key variables included in the final model along with their relevance to the analysis:
+
+- **bedrooms:**  
+  Number of bedrooms in the home. A negative coefficient suggests diminishing returns for additional bedrooms.
+
+- **bathrooms:**  
+  Number of bathrooms, including half baths. More bathrooms are associated with higher prices.
+
+- **sqft_living:**  
+  Interior living space in square feet. One of the most influential variables with a strong positive correlation to price.
+
+- **sqft_lot:**  
+  Total area of the lot. Its effect is present but less pronounced compared to living space.
+
+- **waterfront:**  
+  Binary variable indicating presence of waterfront view. Significantly increases home value.
+
+- **view:**  
+  Ordinal variable representing quality of view from the house (0 to 4). Higher values positively affect price.
+
+- **condition:**  
+  Overall condition of the property, ranked 1 to 5. Less impactful, but higher conditions slightly raise prices.
+
+- **grade:**  
+  Construction quality and design rating from 1 to 13. Strong indicator of price, especially at higher grades.
+
+- **yr_built:**  
+  Year the house was originally built. Older homes tend to be priced lower.
+
+- **yr_renovated:**  
+  Year of most recent renovation. Renovated homes generally command higher prices.
+
+- **zipcode:**  
+  Zip code of the property, capturing neighborhood effects. Important for location-based valuation.
+
+- **lat:**  
+  Latitude coordinate. Northern locations within King County showed higher property values.
+
+- **long:**  
+  Longitude coordinate. Western proximity (towards Seattle) often correlated with higher prices.
+
+- **sqft_living15:**  
+  Average living space of the 15 nearest neighbors. Reflects neighborhood standards, influencing value.
+
+- **sqft_lot15:**  
+  Average lot size of the 15 nearest neighbors. Shows some influence but less than living space measures.
